@@ -71,6 +71,16 @@ def client() -> ShopifyClient:
     except ShopifyError as exc:
         raise HTTPException(400, str(exc)) from exc
 
+@app.get("/")
+def root():
+    return {
+        "app": "AGER → Shopify Importer",
+        "status": "running",
+        "docs": "/docs",
+        "health": "/health"
+    }
+
+
 @app.get("/health")
 def health():
     return {"ok": True, "shopify_configured": bool(settings.SHOPIFY_SHOP and settings.SHOPIFY_CLIENT_ID and settings.SHOPIFY_CLIENT_SECRET), "feed_cached": Path(settings.AGER_XML_PATH).exists(), "dry_run": settings.SYNC_DRY_RUN}
