@@ -1,0 +1,32 @@
+services:
+  - type: web
+    name: ager-shopify-importer
+    runtime: docker
+    plan: free
+    healthCheckPath: /health
+    autoDeploy: true
+    envVars:
+      - key: AGER_FEED_URL
+        value: https://ager.ua/yml_prom/?code=multi&param=8261
+      - key: SHOPIFY_SHOP
+        value: ftz0ia-nw.myshopify.com
+      - key: SHOPIFY_API_VERSION
+        value: "2026-10"
+      - key: SHOPIFY_CLIENT_ID
+        sync: false
+      - key: SHOPIFY_CLIENT_SECRET
+        sync: false
+      - key: APP_API_KEY
+        generateValue: true
+      - key: MARKUP_PERCENT
+        value: "0"
+      - key: MARKUP_FIXED
+        value: "0"
+      - key: SYNC_DRY_RUN
+        value: "true"
+      - key: SYNC_LIMIT
+        value: "10"
+      - key: SYNC_INTERVAL_MINUTES
+        value: "360"
+      - key: AGER_XML_PATH
+        value: /tmp/ager-feed.xml
