@@ -30,8 +30,38 @@ class Settings(BaseSettings):
     APP_API_KEY: str = ""
 
 settings = Settings()
-app = FastAPI(title="AGER → Shopify Importer", version="0.4.0")
+app = FastAPI(title="AGER → Shopify Importer", version="0.5.0")
 _sync_lock = threading.Lock()
+
+DASHBOARD_HTML = r"""<!doctype html>
+<html lang="uk"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="color-scheme" content="dark"><title>AGER → Shopify</title>
+<style>
+:root{color-scheme:dark;--bg:#0b1020;--card:#131b2e;--line:#28334b;--txt:#edf2ff;--muted:#9ba9c4;--accent:#a78bfa;--green:#86efac;--red:#fca5a5}*{box-sizing:border-box}body{margin:0;background:linear-gradient(160deg,#111a31,var(--bg) 45%);color:var(--txt);font:16px system-ui,-apple-system,Segoe UI,sans-serif;min-height:100vh}.wrap{max-width:900px;margin:auto;padding:22px 15px 48px}.head{display:flex;gap:12px;align-items:center;margin-bottom:22px}.logo{width:48px;height:48px;border-radius:15px;background:#29204a;display:grid;place-items:center;font-size:23px}.head h1{font-size:22px;margin:0}.sub{color:var(--muted);font-size:13px;margin-top:4px}.card{background:rgba(19,27,46,.96);border:1px solid var(--line);border-radius:18px;padding:17px;margin:13px 0;box-shadow:0 8px 28px #0002}.card h2{font-size:17px;margin:0 0 12px}.row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}.grow{flex:1;min-width:190px}input{width:100%;background:#0b1222;color:var(--txt);border:1px solid #394663;border-radius:10px;padding:12px;font-size:15px}button{background:#8b5cf6;color:white;border:0;border-radius:11px;padding:12px 15px;font-size:14px;font-weight:650;cursor:pointer}button.secondary{background:#25314b}button.warn{background:#9f3d50}.statgrid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}.stat{background:#0b1222;border:1px solid var(--line);border-radius:12px;padding:13px}.num{font-size:22px;font-weight:750}.label{font-size:12px;color:var(--muted);margin-top:3px}.status{font-size:13px;color:var(--muted);white-space:pre-wrap;overflow-wrap:anywhere;margin-top:12px}.good{color:var(--green)}.bad{color:var(--red)}.results{overflow:auto;margin-top:12px}table{border-collapse:collapse;width:100%;font-size:13px}th,td{text-align:left;padding:9px;border-bottom:1px solid var(--line);vertical-align:top}th{color:var(--muted)}.hint{font-size:12px;color:var(--muted);line-height:1.5}.actions{display:flex;gap:9px;flex-wrap:wrap;margin-top:12px}@media(max-width:520px){.statgrid{grid-template-columns:1fr 1fr}.stat:last-child{grid-column:span 2}.head h1{font-size:19px}.card{padding:14px}}
+</style></head><body><main class="wrap">
+<header class="head"><div class="logo">↗</div><div><h1>AGER → Shopify</h1><div class="sub">Панель керування імпортом товарів</div></div></header>
+<section class="card"><h2>🔐 Доступ до панелі</h2><div class="row"><div class="grow"><input id="key" type="password" autocomplete="current-password" placeholder="Встав APP_API_KEY з Render"></div><button onclick="saveKey()">Підключити</button></div><div class="hint" style="margin-top:9px">Ключ зберігається лише в цьому браузері. Не надсилай його в чат і не додавай у GitHub.</div><div id="status" class="status">Введи ключ доступу й натисни «Підключити».</div></section>
+<section class="card"><h2>📊 Стан фіда</h2><div class="statgrid"><div class="stat"><div id="products" class="num">—</div><div class="label">Товарних карток</div></div><div class="stat"><div id="variants" class="num">—</div><div class="label">Варіантів</div></div><div class="stat"><div id="stock" class="num">—</div><div class="label">Одиниць залишку</div></div></div><div class="actions"><button class="secondary" onclick="loadStats()">Оновити статистику</button><button class="secondary" onclick="refreshFeed()">Завантажити свіжий фід</button></div></section>
+<section class="card"><h2>🧪 Тестовий перегляд</h2><div class="row"><div class="grow"><label class="hint" for="limit">Кількість товарів (1–100)</label><input id="limit" type="number" min="1" max="100" value="10"></div><button onclick="preview()">Переглянути товари</button></div><div id="preview" class="results"></div></section>
+<section class="card"><h2>🔄 Shopify — тестова синхронізація</h2><p class="hint">Безпечний тестовий запуск: показує, що було б створено або оновлено, але не записує зміни в Shopify. Товари залишаються чернетками.</p><div class="actions"><button onclick="drySync()">Запустити dry-run</button></div><div id="syncresult" class="results"></div></section>
+<section class="card"><h2>⚙️ Налаштування</h2><div class="hint">Поточна націнка: <b id="markup">—</b>. Щоб змінити націнку, інтервал або режим запису, поки що відкрий Render → сервіс → Environment. Для першого запуску залишай <b>SYNC_DRY_RUN=true</b>. Не вимикай цей режим до перевірки результатів.</div></section>
+<footer class="sub" style="text-align:center;padding:12px">AGER Importer · керування через захищений API</footer></main>
+<script>
+const $=id=>document.getElementById(id);let apiKey='';try{apiKey=localStorage.getItem('ager_app_key')||'';$('key').value=apiKey}catch(e){}
+function setStatus(msg,ok=true){$('status').textContent=msg;$('status').className='status '+(ok?'good':'bad')}
+function saveKey(){apiKey=$('key').value.trim();if(!apiKey){setStatus('Встав APP_API_KEY з Render.',false);return}try{localStorage.setItem('ager_app_key',apiKey)}catch(e){};setStatus('Ключ збережено. Перевіряю підключення…');loadStats()}
+async function req(path,method='GET'){if(!apiKey)throw Error('Спочатку введи APP_API_KEY і натисни «Підключити».');const r=await fetch(path,{method,headers:{'X-App-Key':apiKey}});let d;try{d=await r.json()}catch(e){d={detail:await r.text()}}if(!r.ok)throw Error(d.detail||('HTTP '+r.status));return d}
+function err(e){setStatus(e.message||String(e),false)}
+async function loadStats(){try{setStatus('Перевіряю підключення та читаю фід…');const [h,s]=await Promise.all([fetch('/health').then(r=>r.json()),req('/stats')]);$('products').textContent=Number(s.products).toLocaleString('uk-UA');$('variants').textContent=Number(s.variants).toLocaleString('uk-UA');$('stock').textContent=Number(s.stock_units).toLocaleString('uk-UA');$('markup').textContent=s.markup_percent+'% + '+s.markup_fixed+' грн';setStatus('Підключення працює. Dry-run: '+(h.dry_run?'увімкнено':'вимкнено')+'. Shopify: '+(h.shopify_configured?'налаштовано':'потрібно налаштувати ключі в Render')+'.')}catch(e){err(e)}}
+async function refreshFeed(){try{setStatus('Завантажую актуальний XML-фід AGER. Це може зайняти кілька хвилин…');const d=await req('/feed/refresh','POST');setStatus('Фід оновлено. Розмір: '+Number(d.bytes).toLocaleString('uk-UA')+' байтів.');await loadStats()}catch(e){err(e)}}
+async function preview(){try{const n=Math.max(1,Math.min(100,Number($('limit').value)||10));setStatus('Читаю перші '+n+' товарів…');const d=await req('/preview?limit='+n);const rows=d.products.map(p=>'<tr><td>'+esc(p.source_sku)+'</td><td>'+esc(p.title||p.name||'')+'</td><td>'+esc(p.price??'')+' грн</td><td>'+esc((p.variants||[]).length)+'</td></tr>').join('');$('preview').innerHTML='<table><thead><tr><th>SKU</th><th>Назва</th><th>Ціна</th><th>Варіанти</th></tr></thead><tbody>'+rows+'</tbody></table>';setStatus('Завантажено '+d.count+' товарів для перегляду.')}catch(e){err(e)}}
+async function drySync(){try{const n=Math.max(1,Math.min(100,Number($('limit').value)||10));setStatus('Виконую тестову синхронізацію без запису в Shopify…');const d=await req('/sync?limit='+n+'&dry_run=true','POST');const rows=(d.results||[]).map(x=>'<tr><td>'+esc(x.sku||'')+'</td><td>'+esc(x.action||'')+'</td><td>'+esc(x.error||'')+'</td></tr>').join('');$('syncresult').innerHTML='<table><thead><tr><th>SKU</th><th>Дія</th><th>Повідомлення</th></tr></thead><tbody>'+rows+'</tbody></table>';setStatus('Dry-run завершено. Записів у Shopify не виконувалось. Переглянь результати нижче.')}catch(e){err(e)}}
+function esc(v){return String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
+</script></body></html>"""
+
+@app.get("/", include_in_schema=False)
+def dashboard():
+    from fastapi.responses import HTMLResponse
+    return HTMLResponse(DASHBOARD_HTML)
 
 
 def authorize(key: Optional[str]):
@@ -92,7 +122,7 @@ def stats(x_app_key: Optional[str] = Header(default=None)):
     products=0; variants=0; stock=0
     for p in iter_products_grouped(xml_path, settings.MARKUP_PERCENT, settings.MARKUP_FIXED):
         products += 1; variants += len(p.variants); stock += sum(v.stock for v in p.variants)
-    return {"products": products, "variants": variants, "stock_units": stock}
+    return {"products": products, "variants": variants, "stock_units": stock, "markup_percent": str(settings.MARKUP_PERCENT), "markup_fixed": str(settings.MARKUP_FIXED)}
 
 @app.post("/feed/refresh")
 def refresh_feed(x_app_key: Optional[str] = Header(default=None)):
