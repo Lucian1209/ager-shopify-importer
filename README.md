@@ -1,4 +1,6 @@
-# AGER → Shopify Importer v0.5
+# AGER → Shopify Importer v0.6
+
+Includes a mobile-friendly web dashboard at the service root (`/`) for feed stats, feed refresh, product preview, and safe dry-run sync. The dashboard requires the generated `APP_API_KEY`. Markup and deployment secrets are still managed through Render Environment settings.
 
 A small FastAPI/Docker service that downloads the AGER multi-language XML feed, groups offers by `sku`, previews products and can synchronize a limited batch to Shopify. Product status is set to `DRAFT`.
 
@@ -17,7 +19,8 @@ A small FastAPI/Docker service that downloads the AGER multi-language XML feed, 
 3. Open Render and choose **New → Blueprint**, then connect the repository containing `render.yaml`.
 4. Review the service and apply the Blueprint. The Blueprint generates `APP_API_KEY`; enter `SHOPIFY_CLIENT_ID` and `SHOPIFY_CLIENT_SECRET` in Render's environment settings. Never commit either secret.
 5. Wait for the deployment to finish and open the service URL.
-6. Keep `SYNC_DRY_RUN=true` until the preview and dry-run results have been checked.
+6. Open the service root URL (`https://YOUR-SERVICE.onrender.com/`) for the mobile dashboard. Paste the `APP_API_KEY` from Render Environment.
+7. Keep `SYNC_DRY_RUN=true` until the preview and dry-run results have been checked.
 
 Blueprint file: `render.yaml`.
 
