@@ -47,7 +47,7 @@ def build_input(product: Product, location_id: str, existing: dict[str, Any] | N
     return {
         "title": product.title,
         "descriptionHtml": product.description,
-        "vendor": "AGER",
+        "vendor": product.vendor or "DROPT",
         "handle": f"ager-{product.source_sku}",
         "status": "DRAFT",
         "productOptions": [{
@@ -61,8 +61,10 @@ def build_input(product: Product, location_id: str, existing: dict[str, Any] | N
 
 
 def sync_product(client: ShopifyClient, product: Product, location_id: str, dry_run: bool = True) -> SyncResult:
-    handle = f"ager-{product.source_sku}"
+    handle = f"feed-{product.source_sku}"
     existing = client.find_by_handle(handle)
+    if existing is None:
+        existing = client.find_by_handle(f"ager-{product.source_sku}")
     if existing is None:
         # Migrate one of the manually-created test products instead of creating a duplicate.
         existing = client.find_by_source_sku(product.source_sku)
