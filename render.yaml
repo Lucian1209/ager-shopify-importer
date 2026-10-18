@@ -28,5 +28,15 @@ services:
         value: "10"
       - key: SYNC_INTERVAL_MINUTES
         value: "360"
-      - key: AGER_XML_PATH
-        value: /tmp/ager-feed.xml
+      - key: SYNC_UPDATE_CONTENT
+        value: "true"
+    # Persistent feed list + XML cache (needs a paid plan: change `plan` above, then uncomment):
+    #   disk:
+    #     name: importer-data
+    #     mountPath: /var/data
+    #     sizeGB: 1
+    #   and add to envVars:
+    #     - key: FEED_DB_PATH
+    #       value: /var/data/feeds.db
+    #     - key: FEED_CACHE_DIR
+    #       value: /var/data/feed-cache

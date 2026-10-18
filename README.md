@@ -1,95 +1,93 @@
-# AGER → Shopify Importer v0.6
+# Feed → Shopify Importer v1.0
 
-Includes a mobile-friendly web dashboard at the service root (`/`) for feed stats, feed refresh, product preview, and safe dry-run sync. The dashboard requires the generated `APP_API_KEY`. Markup and deployment secrets are still managed through Render Environment settings.
+A small FastAPI/Docker service that downloads supplier XML feeds (DROPT / Prom YML and AGER multi-offer
+feeds), previews the products with your markup applied and synchronises them to Shopify with the
+`productSet` mutation. A mobile-friendly dashboard is served at `/`.
 
-A small FastAPI/Docker service that downloads the AGER multi-language XML feed, groups offers by `sku`, previews products and can synchronize a limited batch to Shopify. Product status is set to `DRAFT`.
+* **Prom / YML** (`<yml_catalog>`): every `<offer>` is one Shopify product; SKU = offer `id` (fallback `model`).
+* **AGER**: consecutive `<offer>`s with the same `<sku>` / `group_id` are variants (option "Розмір") of one product.
+  Offers of one group must be adjacent in the file.
 
-## Safety defaults
+## Safety model
 
-- `SYNC_DRY_RUN=true` — `/sync` previews create/update actions without writing to Shopify.
-- `SYNC_LIMIT=10` — maximum products per scheduled run; manual `/sync` request also has a hard limit of 100.
-- `MARKUP_PERCENT=0`, `MARKUP_FIXED=0` — no markup until deliberately configured.
-- Shopify credentials and `APP_API_KEY` are environment variables, not stored in this repository.
-- A loose SKU search will not be used to select an unrelated product for updating.
+| Rule | Detail |
+|---|---|
+| Dry-run by default | `SYNC_DRY_RUN=true`: scheduled sync never writes, and `POST /sync` previews unless you pass `dry_run=false`. |
+| New products are `DRAFT` | Existing products keep their status and handle — a product you published is **not** reverted to draft. |
+| Images | Uploaded only when the product has no media yet (no re-upload on every sync). |
+| No free products | Variants whose price is missing/invalid/zero are skipped, never created at 0.00. |
+| Loose matches are never updated | Products are matched by handle, then by exact SKU (or `SKU-<size>`) only. |
+| Secrets | `SHOPIFY_CLIENT_SECRET` and `APP_API_KEY` live in environment variables only. |
 
 ## Deploy to Render
 
-1. Create a private GitHub repository, for example `ager-shopify-importer`.
-2. Upload the *contents* of this project folder to the repository root (the `render.yaml` file must be at the root), then commit/push to the default branch.
-3. Open Render and choose **New → Blueprint**, then connect the repository containing `render.yaml`.
-4. Review the service and apply the Blueprint. The Blueprint generates `APP_API_KEY`; enter `SHOPIFY_CLIENT_ID` and `SHOPIFY_CLIENT_SECRET` in Render's environment settings. Never commit either secret.
-5. Wait for the deployment to finish and open the service URL.
-6. Open the service root URL (`https://YOUR-SERVICE.onrender.com/`) for the mobile dashboard. Paste the `APP_API_KEY` from Render Environment.
-7. Keep `SYNC_DRY_RUN=true` until the preview and dry-run results have been checked.
+1. Push the **contents** of this folder to a private GitHub repository (`render.yaml` must be in the root).
+2. Render → **New → Blueprint** → select the repository → apply.
+3. Enter `SHOPIFY_CLIENT_ID` and `SHOPIFY_CLIENT_SECRET` (Dev Dashboard app with `read_products`, `write_products`,
+   `read_inventory`, `write_inventory`, `read_locations`). `APP_API_KEY` is generated for you.
+4. Open the service URL, paste `APP_API_KEY`, add/select a feed, click **Завантажити свіжий XML**, **Переглянути товари**
+   and **Запустити dry-run**.
+5. Only after the dry-run looks right, do the first write: `POST /sync?limit=10&dry_run=false` (see below).
 
-Blueprint file: `render.yaml`.
+### Hosting notes
 
-## Important Render hosting note
+* The free plan sleeps when idle, so the in-process scheduler is **not reliable there**. Use an always-on plan for
+  unattended syncs, or keep syncing manually.
+* The feed list (SQLite) and XML cache live in `/tmp` by default and are lost on redeploy. On a paid plan attach a disk
+  and set `FEED_DB_PATH=/var/data/feeds.db`, `FEED_CACHE_DIR=/var/data/feed-cache` (commented example in `render.yaml`).
+* Run a **single** worker/instance: the sync lock and the scheduler are in-process.
+* SKUs must be unique across feeds — two feeds with the same SKU would overwrite the same Shopify product.
 
-The Blueprint uses Render's free web-service plan for initial testing. Free web services can spin down when idle, so an in-process scheduler is **not reliable for unattended automatic synchronization** on that plan. For dependable 6-hour synchronization, upgrade the web service to an always-on paid instance or move scheduled sync into a separate Render Cron Job/Worker before enabling writes. Do not change `SYNC_DRY_RUN` to `false` until the manual test is reviewed.
+## API
 
-## Protected endpoints
-
-All protected endpoints require the `X-App-Key` header. Use the generated `APP_API_KEY` value from Render's environment settings.
+`GET /` (dashboard) and `GET /health` are public; everything else needs the header `X-App-Key: <APP_API_KEY>`.
 
 ```bash
-curl -H 'X-App-Key: YOUR_APP_API_KEY' https://YOUR-SERVICE.onrender.com/health
-curl -H 'X-App-Key: YOUR_APP_API_KEY' 'https://YOUR-SERVICE.onrender.com/preview?limit=10'
-curl -H 'X-App-Key: YOUR_APP_API_KEY' 'https://YOUR-SERVICE.onrender.com/stats'
-curl -X POST -H 'X-App-Key: YOUR_APP_API_KEY' 'https://YOUR-SERVICE.onrender.com/sync?limit=10'
+H='X-App-Key: YOUR_APP_API_KEY'; B=https://YOUR-SERVICE.onrender.com
+curl -H "$H" $B/feeds
+curl -H "$H" "$B/preview?feed_id=1&limit=10"
+curl -H "$H" "$B/stats?feed_id=1"
+curl -X POST -H "$H" "$B/feed/refresh?feed_id=1"
+curl -H "$H" $B/shopify/locations
+curl -X POST -H "$H" "$B/sync?feed_id=1&limit=10"                       # dry-run (default)
+curl -X POST -H "$H" "$B/sync?feed_id=1&limit=100&offset=100&dry_run=false"  # real write, products 101–200
 ```
 
-The initial `/sync` call is a dry run by default. Only after verifying its output should you make the first write with `POST /sync?limit=10&dry_run=false`. That explicit override writes to Shopify, but products remain `DRAFT`.
+`/sync` handles at most 100 products per call (`limit`), use `offset` to walk through a big feed. The scheduler
+handles `SYNC_LIMIT` products per feed per run (`0` = the whole feed).
 
-## Environment variables
+## Configuration
 
-Required secrets: `SHOPIFY_CLIENT_ID`, `SHOPIFY_CLIENT_SECRET`, generated `APP_API_KEY`.
-
-Other settings are declared in `render.yaml`: `SHOPIFY_SHOP`, `SHOPIFY_API_VERSION`, `AGER_FEED_URL`, `MARKUP_PERCENT`, `MARKUP_FIXED`, `SYNC_DRY_RUN`, `SYNC_LIMIT`, `SYNC_INTERVAL_MINUTES`, `AGER_XML_PATH`.
+See `.env.example` for every variable. Required: `SHOPIFY_SHOP`, `SHOPIFY_CLIENT_ID`, `SHOPIFY_CLIENT_SECRET`, `APP_API_KEY`.
+Markup is configured **per feed** in the dashboard (`MARKUP_PERCENT` / `MARKUP_FIXED` only seed the first feed).
+`SYNC_UPDATE_CONTENT=false` makes syncs touch only price, stock and variants of existing products.
 
 ## Run locally
 
 ```bash
-python -m venv .venv
-source .venv/bin/activate
+python -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
-cp .env.example .env
+cp .env.example .env        # fill in the values
 uvicorn app.main:app --reload
 ```
 
+## Tests
 
-## DROPT / Prom YML feed support (v7)
+```bash
+python -m unittest discover -s tests -t .
+```
 
-This version supports both AGER's grouped offer structure and Prom/YML feeds with `<yml_catalog><shop><offers><offer>`. For DROPT, each offer is imported as a separate Shopify product; SKU is taken from the offer `id` (fallback: `model`). The parser reads `name_ua`/`name`, `description`, `vendor`, `model`, `url`, all `picture` entries, `price`, and `quantity_in_stock`. When `available="false"`, inventory is forced to zero even if a stock field is inconsistent. The dashboard preview includes the calculated price.
+The parser, sync, Shopify-client and storage tests need only `lxml` (+ `httpx` for import); `tests/test_api.py`
+runs when FastAPI is installed.
 
-### Deploy / update on Render
+## Layout
 
-1. Replace the repository contents with the contents of this ZIP (keep `render.yaml` in the repository root), or copy the updated `app/parser.py`, `app/sync.py`, and `app/main.py` into your existing repository.
-2. In Render → your service → **Environment**, set `AGER_FEED_URL` to:
-   `https://dropt.in.ua/index.php?route=export/prom&markup=85&ids=uniq`
-   Do not include the `#ufeed...` fragment; URL fragments are not sent to the server.
-3. Keep `SYNC_DRY_RUN=true` and `SYNC_LIMIT=10`. Do not enable live writes until the first ten products, prices, images, and stock values have been checked. Shopify products are created as **DRAFT**.
-4. Save changes and deploy. Open the service root URL (not `/docs`), enter `APP_API_KEY` from Render, then use **Завантажити свіжий фід**, **Оновити статистику**, **Переглянути товари**, and **Запустити dry-run**.
-
-### Validation performed
-
-Tested locally against `prom_export_85_v2.xml`: parser read all 7,417 offers as 7,417 products; 2,655 had positive stock and 4,762 had zero stock; Python compile check passed. This validates the uploaded XML, not live access to the DROPT URL or live Shopify writes.
-
-### Important
-
-The Render free web service may sleep; the in-process scheduler is not a reliable unattended six-hour sync on a sleeping service. Keep dry-run enabled during validation. Never commit Shopify client secrets or `APP_API_KEY` to GitHub.
-
-## Multiple feeds dashboard (v8)
-
-The dashboard now supports adding multiple supplier XML/YML feed URLs directly in the app. Each feed has its own display name, URL, percentage markup and fixed UAH markup. Select a feed to refresh its XML, view stats, preview products, or run a Shopify dry-run for that feed only.
-
-### Important storage note
-
-Feed definitions are stored in SQLite (`FEED_DB_PATH`, default `/tmp/feeds.db`). On Render's ephemeral filesystem, definitions may be lost after a redeploy or instance replacement. For persistent feed configuration, attach a Render persistent disk mounted at `/var/data` and set `FEED_DB_PATH=/var/data/feeds.db`; keep `FEED_CACHE_DIR=/var/data/feed-cache` if you also want cached XML files to persist. Persistent disks may require a paid Render plan. Without a disk, add the feeds again after a restart/deploy.
-
-### Safety
-
-- Shopify writes remain controlled by `SYNC_DRY_RUN=true` by default.
-- Adding a feed only saves its URL; it does not immediately import or publish products.
-- Test one feed at a time, verify price/stock/images, and use dry-run before enabling any writes.
-- Never put Shopify client secrets or `APP_API_KEY` into source control.
+```
+app/main.py       FastAPI app, scheduler, endpoints
+app/dashboard.html  dashboard UI
+app/parser.py     streaming XML parser (Prom/YML and AGER)
+app/sync.py       product → productSet input, handles, sync loop
+app/shopify.py    GraphQL client (auth, retries, throttling)
+app/store.py      SQLite feed store
+app/feedfile.py   feed download + validation
+```
