@@ -78,3 +78,18 @@ Tested locally against `prom_export_85_v2.xml`: parser read all 7,417 offers as 
 ### Important
 
 The Render free web service may sleep; the in-process scheduler is not a reliable unattended six-hour sync on a sleeping service. Keep dry-run enabled during validation. Never commit Shopify client secrets or `APP_API_KEY` to GitHub.
+
+## Multiple feeds dashboard (v8)
+
+The dashboard now supports adding multiple supplier XML/YML feed URLs directly in the app. Each feed has its own display name, URL, percentage markup and fixed UAH markup. Select a feed to refresh its XML, view stats, preview products, or run a Shopify dry-run for that feed only.
+
+### Important storage note
+
+Feed definitions are stored in SQLite (`FEED_DB_PATH`, default `/tmp/feeds.db`). On Render's ephemeral filesystem, definitions may be lost after a redeploy or instance replacement. For persistent feed configuration, attach a Render persistent disk mounted at `/var/data` and set `FEED_DB_PATH=/var/data/feeds.db`; keep `FEED_CACHE_DIR=/var/data/feed-cache` if you also want cached XML files to persist. Persistent disks may require a paid Render plan. Without a disk, add the feeds again after a restart/deploy.
+
+### Safety
+
+- Shopify writes remain controlled by `SYNC_DRY_RUN=true` by default.
+- Adding a feed only saves its URL; it does not immediately import or publish products.
+- Test one feed at a time, verify price/stock/images, and use dry-run before enabling any writes.
+- Never put Shopify client secrets or `APP_API_KEY` into source control.
