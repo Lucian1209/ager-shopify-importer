@@ -7,7 +7,7 @@ services:
     autoDeploy: true
     envVars:
       - key: AGER_FEED_URL
-        value: https://ager.ua/yml_prom/?code=multi&param=8261
+        value: https://dropt.in.ua/index.php?route=export/prom&markup=85&ids=uniq
       - key: SHOPIFY_SHOP
         value: ftz0ia-nw.myshopify.com
       - key: SHOPIFY_API_VERSION

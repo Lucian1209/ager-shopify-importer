@@ -56,3 +56,25 @@ pip install -r requirements.txt
 cp .env.example .env
 uvicorn app.main:app --reload
 ```
+
+
+## DROPT / Prom YML feed support (v7)
+
+This version supports both AGER's grouped offer structure and Prom/YML feeds with `<yml_catalog><shop><offers><offer>`. For DROPT, each offer is imported as a separate Shopify product; SKU is taken from the offer `id` (fallback: `model`). The parser reads `name_ua`/`name`, `description`, `vendor`, `model`, `url`, all `picture` entries, `price`, and `quantity_in_stock`. When `available="false"`, inventory is forced to zero even if a stock field is inconsistent. The dashboard preview includes the calculated price.
+
+### Deploy / update on Render
+
+1. Replace the repository contents with the contents of this ZIP (keep `render.yaml` in the repository root), or copy the updated `app/parser.py`, `app/sync.py`, and `app/main.py` into your existing repository.
+2. In Render → your service → **Environment**, set `AGER_FEED_URL` to:
+   `https://dropt.in.ua/index.php?route=export/prom&markup=85&ids=uniq`
+   Do not include the `#ufeed...` fragment; URL fragments are not sent to the server.
+3. Keep `SYNC_DRY_RUN=true` and `SYNC_LIMIT=10`. Do not enable live writes until the first ten products, prices, images, and stock values have been checked. Shopify products are created as **DRAFT**.
+4. Save changes and deploy. Open the service root URL (not `/docs`), enter `APP_API_KEY` from Render, then use **Завантажити свіжий фід**, **Оновити статистику**, **Переглянути товари**, and **Запустити dry-run**.
+
+### Validation performed
+
+Tested locally against `prom_export_85_v2.xml`: parser read all 7,417 offers as 7,417 products; 2,655 had positive stock and 4,762 had zero stock; Python compile check passed. This validates the uploaded XML, not live access to the DROPT URL or live Shopify writes.
+
+### Important
+
+The Render free web service may sleep; the in-process scheduler is not a reliable unattended six-hour sync on a sleeping service. Keep dry-run enabled during validation. Never commit Shopify client secrets or `APP_API_KEY` to GitHub.
